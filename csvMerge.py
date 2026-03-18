@@ -9,11 +9,7 @@ def trimTS(df, ts_min, ts_max):
             ts_min - minimum timestamp to keep
             ts_max - maximum timestamp to keep
     """
-    for i in df.index:
-        if i < ts_min or i > ts_max:
-            df = df.drop(i)
-
-    return df
+    return df.loc[(df.index >= ts_min) & (df.index <= ts_max)]
 
 def filterTS(df, ts):
     """ trims rows from DataFrame with timestamps that are not in ts
@@ -23,11 +19,7 @@ def filterTS(df, ts):
         Returns:
             trimmed DataFrame
     """
-    for i in df.index:
-        if i not in ts:
-            df = df.drop(i)
-
-    return df
+    return df.loc[df.index.isin(ts)]
 
 parser = argparse.ArgumentParser(description='Merge csv.')
 parser.add_argument('file1', nargs=1, type=argparse.FileType('r'),

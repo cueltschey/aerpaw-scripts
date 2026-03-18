@@ -17,13 +17,16 @@ def compute_distance(data, lon_column, lat_column, invert=False):
     start_lat = data[lat_column].iloc[0]
 
     distance = data.apply(
-        lambda row: haversine(start_lon, start_lat,
-                              row[lon_column], row[lat_column]) * 100,
+        lambda row: haversine(
+            start_lon, start_lat,
+            row[lon_column], row[lat_column]
+        ) * 100,
         axis=1
     )
 
     if invert:
-        distance *= -1
+        distance = -distance
+        distance = distance - distance.min()  # shift so min == 0
 
     return distance
 

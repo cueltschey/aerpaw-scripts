@@ -50,6 +50,7 @@ def normalize_bandwidth_to_mbits(value_str, unit):
     if unit == "bits/sec":
         return val / 1e6
     elif unit == "Kbits/sec":
+        print(f"encountered Kbits {val}")
         return val / 1e3
     elif unit == "Mbits/sec":
         return val
@@ -194,25 +195,51 @@ class LogParser:
             "pingtime":[]
         }
 
+        prev_seq = None
+        last_dest = None
+
         try:
             for l in self.raw:
-                ts = datetime.strptime(l.split("]")[0].split("[")[1],"%Y-%m-%d %H:%M:%S.%f")
+                ts = datetime.strptime(
+                    l.split("]")[0].split("[")[1],
+                    "%Y-%m-%d %H:%M:%S.%f"
+                )
                 dt = l.split("]")[1].replace("\n","")
 
                 if "icmp_seq" in dt:
-                    dt = dt.split(" ")[1:-1]
-                    dt.remove("bytes")
-                    dt.remove("from")
-                    dt[2] = dt[2].replace("icmp_seq=","")
-                    dt[3] = dt[3].replace("ttl=","")
-                    dt[4] = dt[4].replace("time=","")
-                    dt = [i for i in dt if '' != i]
-                    self.data["time"].append(ts)
-                    for index, j in enumerate(dt):
-                        self.data[list(self.data.keys())[index+1]].append(j.split("=")[-1])
-                        if index == len(dt) - 1:
-                            self.data[list(self.data.keys())[index+1]][-1] += l[-3:-3].strip()
+                    parts = dt.split(" ")[1:-1]
+                    parts.remove("bytes")
+                    parts.remove("from")
 
+                    size = parts[0]
+                    dest = parts[1]
+                    seq = int(parts[2].replace("icmp_seq=",""))
+                    ttl = parts[3].replace("ttl=","")
+                    ptime = parts[4].replace("time=","")
+
+                    # Fill missing (lost) packets
+                    if prev_seq is not None and seq > prev_seq + 1:
+                        for missing_seq in range(prev_seq + 1, seq):
+                            self.data["time"].append(ts)
+                            self.data["size(byte)"].append("0")
+                            self.data["destination"].append(last_dest)
+                            self.data["icmp_seq"].append(missing_seq)
+                            self.data["ttl"].append("0")
+                            self.data["pingtime"].append("0")
+
+                    # Store current packet
+                    self.data["time"].append(ts)
+                    self.data["size(byte)"].append(size)
+                    self.data["destination"].append(dest)
+                    self.data["icmp_seq"].append(seq)
+                    self.data["ttl"].append(ttl)
+                    self.data["pingtime"].append(ptime)
+
+                    prev_seq = seq
+                    last_dest = dest
+
+            # Optional: normalize to float
+            self.data["pingtime"] = [float(x) for x in self.data["pingtime"]]
 
         except Exception as e:
             print("Error parsing Ping log file: ", e)
