@@ -288,14 +288,18 @@ class LogParser:
 
                     if len(dt) >= 7:
                         self.data["Interval(sec)"].append(dt[0])
-                        self.data["Transfer(MBytes)"].append(dt[2])
+                        self.data["Transfer(MBytes)"].append(dt[1])
 
-                        bw_mbits = normalize_bandwidth_to_mbits(dt[3], bw_unit)
+                        bw_mbits = normalize_bandwidth_to_mbits(dt[2], bw_unit)
                         self.data["Bandwidth(MBits/sec)"].append(bw_mbits)
                         continue
 
                     for index, j in enumerate(dt):
-                        self.data[list(self.data.keys())[index+2]].append(j)
+                        key = list(self.data.keys())[index+2]
+                        if key == "Bandwidth(MBits/sec)" and bw_unit is not None:
+                            self.data[key].append(normalize_bandwidth_to_mbits(j, bw_unit))
+                        else:
+                            self.data[key].append(j)
         except Exception as e:
             print("Error parsing iperf log file: ", e)
 
