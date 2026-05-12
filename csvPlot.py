@@ -1,107 +1,147 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import sys
 import numpy as np
 import argparse
 
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance in kilometers between two points
-    on the Earth (specified in decimal degrees).
-    """
-    # Convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+R_EARTH = {'km': 6371.009, 'mi': 3956}
 
-    # Haversine formula
+def haversine(lon1, lat1, lon2, lat2, units='km'):
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
     dlon = lon2 - lon1
     dlat = lat2 - lat1
     a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
-    c = 2 * np.arcsin(np.sqrt(a))
-    r = 6371  # Radius of Earth in kilometers. Use 3956 for miles. Determines return value units.
-    return c * r
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    return c * R_EARTH[units]
 
-def plot_scatter(csv_file, x_column, y_column, y1_color='b', y2_color='r'):
-    # Read the CSV file
+def compute_distance(data, lon_column, lat_column, invert=False, distance_units='km'):
+    start_lon = data[lon_column].iloc[0]
+    start_lat = data[lat_column].iloc[0]
+
+    distance = data.apply(
+        lambda row: haversine(
+            start_lon, start_lat,
+            row[lon_column], row[lat_column],
+            units=distance_units
+        ),
+        axis=1
+    )
+
+    if invert:
+        distance = -distance
+        distance = distance - distance.min()  # shift so min == 0
+
+    return distance
+
+def plot_scatter(csv_file, x_column, y_column, y1_color='b', y2_color='r', invert_distance=False, distance_units='km'):
     data = pd.read_csv(csv_file)
 
     lon_column = "Longitude"
     lat_column = "Latitude"
 
-    # Check if the columns exist in the CSV
-    if x_column not in data.columns or y_column not in data.columns or lon_column not in data.columns or lat_column not in data.columns:
-        print(f"Columns '{x_column}', '{y_column}', '{lon_column}', or '{lat_column}' not found in the CSV file.")
+    required = {x_column, y_column, lon_column, lat_column}
+    if not required.issubset(data.columns):
+        print(f"Missing required columns: {required - set(data.columns)}")
         return
 
-    # Define starting position
-    start_lon = data[lon_column].iloc[0]
-    start_lat = data[lat_column].iloc[0]
+    time = pd.to_datetime(data[x_column])
+    data[x_column] = (time - time.iloc[0]).dt.total_seconds()
 
-    # Calculate distances from the starting position
-    data['distance'] = data.apply(lambda row: haversine(start_lon, start_lat, row[lon_column], row[lat_column]) * 100, axis=1)
+    data['distance'] = compute_distance(
+        data, lon_column, lat_column, invert=invert_distance, distance_units=distance_units
+    )
 
-    # Plot the graph
-    plt.figure(figsize=(10, 6))
-    plt.scatter(data[x_column], data[y_column], color=y1_color, label=y_column, s=0.8)
-    plt.scatter(data[x_column], data['distance'], color=y2_color, label='distance', s=0.8)
-    plt.xlabel(x_column)
-    plt.title(f"{y_column}(y1) and distance(y2) vs {x_column}")
-    plt.grid(False)
-    plt.legend()
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ax2 = ax1.twinx()
+
+    ax1.scatter(data[x_column], data[y_column],
+                color=y1_color, s=0.8, label=y_column)
+    ax2.scatter(data[x_column], data['distance'],
+                color=y2_color, s=0.8, label=f'distance ({distance_units})')
+
+    ax1.set_xlabel("seconds from start")
+    ax1.set_ylabel(y_column, color=y1_color)
+    ax2.set_ylabel(f"distance ({distance_units})", color=y2_color)
+
+    ax1.tick_params(axis='y', labelcolor=y1_color)
+    ax2.tick_params(axis='y', labelcolor=y2_color)
+
+    fig.suptitle(f"{y_column} (left) and distance ({distance_units}) (right) vs seconds from start")
+
+    fig.tight_layout()
     plt.show()
 
-def plot_line(csv_file, x_column, y_column, y1_color='b', y2_color='r'):
-    # Read the CSV file
+def plot_line(csv_file, x_column, y_column, y1_color='b', y2_color='r', invert_distance=False, distance_units='km'):
     data = pd.read_csv(csv_file)
 
     lon_column = "Longitude"
     lat_column = "Latitude"
 
-    # Check if the columns exist in the CSV
-    if x_column not in data.columns or y_column not in data.columns or lon_column not in data.columns or lat_column not in data.columns:
-        print(f"Columns '{x_column}', '{y_column}', '{lon_column}', or '{lat_column}' not found in the CSV file.")
+    required = {x_column, y_column, lon_column, lat_column}
+    if not required.issubset(data.columns):
+        print(f"Missing required columns: {required - set(data.columns)}")
         return
 
-    # Define starting position
-    start_lon = data[lon_column].iloc[0]
-    start_lat = data[lat_column].iloc[0]
+    time = pd.to_datetime(data[x_column])
+    data[x_column] = (time - time.iloc[0]).dt.total_seconds()
 
-    # Calculate distances from the starting position
-    data['distance'] = data.apply(lambda row: (haversine(start_lon, start_lat, row[lon_column], row[lat_column]) * 100 - 35) * -1, axis=1)
+    data['distance'] = compute_distance(
+        data, lon_column, lat_column, invert=invert_distance, distance_units=distance_units
+    )
 
-    # Plot the graph
-    plt.figure(figsize=(10, 6))
-    plt.plot(data[x_column], data[y_column], color=y1_color, label=y_column)
-    plt.plot(data[x_column], data['distance'], color=y2_color, label='distance')
-    plt.xlabel(x_column)
-    plt.title(f"{y_column}(y1) and distance(y2) vs {x_column}")
-    plt.grid(False)
-    plt.legend()
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ax2 = ax1.twinx()
+
+    ax1.plot(data[x_column], data[y_column],
+             color=y1_color, label=y_column)
+    ax2.plot(data[x_column], data['distance'],
+             color=y2_color, label=f'distance ({distance_units})')
+
+    ax1.set_xlabel("seconds from start")
+    ax1.set_ylabel(y_column, color=y1_color)
+    ax2.set_ylabel(f"distance ({distance_units})", color=y2_color)
+
+    ax1.tick_params(axis='y', labelcolor=y1_color)
+    ax2.tick_params(axis='y', labelcolor=y2_color)
+
+    fig.suptitle(f"{y_column} (left) and distance ({distance_units}) (right) vs seconds from start")
+
+    fig.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot CSV data with Matplotlib.')
-    parser.add_argument('logfile', type=str,
-                        help='Log file for CSV')
-    parser.add_argument('-x','--x_axis', default="time",
-                        help='Graph x axis')
-    parser.add_argument('-y','--y_axis',
-                        help='Graph y axis')
-    parser.add_argument('-t','--graph_type', type=str, default="scatter",
-                        help='The type of graph to be made (scatter/line)')
-    parser.add_argument('--y1_color', default='b',
-                        help='x axis color')
+    parser.add_argument('logfile', type=str, help='Log file for CSV')
+    parser.add_argument('-x', '--x_axis', default="time", help='Graph x axis')
+    parser.add_argument('-y', '--y_axis', required=True, help='Graph y axis')
+    parser.add_argument('-t', '--graph_type', default="scatter",
+                        help='scatter or line')
+    parser.add_argument('--y1_color', default='b', help='y1 axis color')
+    parser.add_argument('--y2_color', default='r', help='y2 axis color')
 
-    parser.add_argument('--y2_color', default='r',
-                        help='y axis color')
-    
+    parser.add_argument('--invert-distance', action='store_true',
+                        help='Invert the distance plot')
 
+    parser.add_argument('--distance-units', default='km', choices=['km', 'mi'],
+                        help='Distance unit (km or mi)')
 
     args = parser.parse_args()
 
     if args.graph_type == "scatter":
-        plot_scatter(args.logfile, args.x_axis, args.y_axis, y1_color=args.y1_color, y2_color=args.y2_color)
+        plot_scatter(
+            args.logfile, args.x_axis, args.y_axis,
+            y1_color=args.y1_color,
+            y2_color=args.y2_color,
+            invert_distance=args.invert_distance,
+            distance_units=args.distance_units
+        )
     elif args.graph_type == "line":
-        plot_line(args.logfile, args.x_axis, args.y_axis, y1_color=args.y1_color, y2_color=args.y2_color)
+        plot_line(
+            args.logfile, args.x_axis, args.y_axis,
+            y1_color=args.y1_color,
+            y2_color=args.y2_color,
+            invert_distance=args.invert_distance,
+            distance_units=args.distance_units
+        )
     else:
-        raise ValueError("Invalid graph type")
+        raise ValueError("Invalid graph type (use scatter or line)")
+
